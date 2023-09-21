@@ -3,13 +3,14 @@ import io
 
 import numpy as np
 import streamlit as st
+from streamlit.components.v1 import html
 from langchain.chat_models import ChatOpenAI
-from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain.schema import HumanMessage, SystemMessage
 
 from voice_synthesis import synthesize_ssml, get_voice_list
 
-TESTING = False
 
+TESTING = False
 
 
 st.set_page_config(
@@ -47,6 +48,19 @@ system_prompt = """You are a meditation generator. You generate a meditation bas
 
 human_prompt = "Generate a meditation using the following prompt:\n\n{user_input}\n\nMake sure to add multiple break and a long pause. Write the meditation in {language}."
 
+safari_warning_html = """
+<div id="safari-warning" style="display: none;">
+<div style="background-color: #ffe3121a; color: #926c05; padding: 10px; border-radius: 5px; font-style: italic; font-family: 'Source Sans Pro'">
+    <b>Warning:</b> In Safari, the audio player is sometime throwing an error, please use another browser or download the meditation.
+</div>
+</div>
+<script>
+var isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+if (isSafari) {
+document.getElementById("safari-warning").style.display = "block";
+}
+</script>
+"""
 
 @st.cache_data
 def get_voices(locale, gender):
@@ -72,7 +86,7 @@ def generate_response(input_text, time, max_tokens):
             # meditation = meditation.replace(". <",".<").replace(". ",'. <break time=\"1s\" /> ')
             placeholder.markdown(meditation + "▌")
         placeholder.markdown(meditation)
-        status.update(label="Meditation generation complete!", state="complete", expanded=False)
+        status.update(label="Text generation complete!", state="complete", expanded=False)
 
     return meditation
 
@@ -142,5 +156,6 @@ with st.form("my_form"):
         st.session_state.voice = generate_voice(st.session_state.meditation)
 
 if st.session_state.get("voice", False):
-    st.audio(st.session_state.voice)
+    st.audio(st.session_state.voice, format="audio/wav")
     st.download_button("Download meditation", data=st.session_state.voice, file_name="meditation.wav", mime="audio/wav")
+    html(safari_warning_html)

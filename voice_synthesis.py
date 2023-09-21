@@ -15,7 +15,7 @@ def get_voice_list(language_code):
 def synthesize_ssml(ssml, model="en-US-Standard-C", locale="en-US"):
     input_text = texttospeech.SynthesisInput(ssml=ssml)
     voice = texttospeech.VoiceSelectionParams(language_code=locale, name=model)
-    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.LINEAR16, speaking_rate=0.85)
+    audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.LINEAR16, speaking_rate=0.72)
     response = client.synthesize_speech(input=input_text, voice=voice, audio_config=audio_config)
     return response.audio_content
 

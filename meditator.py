@@ -39,6 +39,12 @@ best_models = {
     }
 }
 
+musics = {
+    "No Music": [None, 0],
+    "Deep Sound": ["musics/music_1.wav", 0.5],
+    "Water Sound": ["musics/music_2.wav", 0.25],
+}
+
 system_prompt = """You are a meditation generator. You generate a meditation based on the user's input.
 - The meditation should be about {time} minutes long.
 - The meditation will be read by a voice assistant, so make sure to pause for a few seconds between sentences using <break time="Xs"/>. You can only enter a time in seconds and lower than 5.
@@ -90,6 +96,38 @@ def generate_response(input_text, time, max_tokens):
 
     return meditation
 
+
+def superpose_music(meditation, music_path, mix_ratio=0.5):
+    wav_file1 = wave.open(io.BytesIO(meditation), 'rb')
+    wav_file2 = wave.open(music_path, 'rb')
+
+    params_1 = wav_file1.getparams()
+    params_2 = wav_file2.getparams()
+
+    frames1 = wav_file1.readframes(params_1.nframes)
+    frames2 = wav_file2.readframes(params_2.nframes)
+
+    frames1 = np.frombuffer(frames1, dtype=np.int16)
+    frames2 = np.frombuffer(frames2, dtype=np.int16)[:len(frames1)]
+
+    frames1 = frames1.astype(np.int32)
+    frames2 = frames2.astype(np.int32)
+
+    frames = mix_ratio * frames1 + (1-mix_ratio) * frames2
+    frames = frames.astype(np.int16).tobytes()
+
+    output_audio_io = io.BytesIO()
+    output_audio_header = wave.open(output_audio_io, 'wb')
+    output_audio_header.setparams(params_1)
+    output_audio_header.writeframes(frames)
+    output_audio_header.close()
+
+    wav_file1.close()
+    wav_file2.close()
+    
+    return output_audio_io.getvalue()
+
+
 def concatenate_audio(audio1, audio2, pause_duration=0):
     wav_file1 = wave.open(io.BytesIO(audio1), 'rb')
     wav_file2 = wave.open(io.BytesIO(audio2), 'rb')
@@ -101,16 +139,15 @@ def concatenate_audio(audio1, audio2, pause_duration=0):
     silent_audio_byte_object = silent_segment.tobytes()
 
     output_audio_io = io.BytesIO()
-    output_audio_header = wave.open(output_audio_io, 'wb')
-    output_audio_header.setparams(params)
-    output_audio_header.writeframes(wav_file1.readframes(params.nframes))
-    output_audio_header.writeframes(silent_audio_byte_object)
-    output_audio_header.writeframes(wav_file2.readframes(params.nframes))
-    output_audio_header.close()
+    with wave.open(output_audio_io, 'wb') as output_audio_header:
+        output_audio_header.setparams(params)
+        output_audio_header.writeframes(wav_file1.readframes(params.nframes))
+        output_audio_header.writeframes(silent_audio_byte_object)
+        output_audio_header.writeframes(wav_file2.readframes(params.nframes))
     
     return output_audio_io.getvalue()
 
-def generate_voice(meditation):
+def generate_voice(meditation, music):
     full_audio = None
     with st.status("Generating voice...", expanded=True) as status:
         meditation = meditation.replace(". <",".<").replace(". ",'. <break time=\"1s\" /> ')
@@ -120,6 +157,10 @@ def generate_voice(meditation):
             for chunk in chunks[1:]:
                 audio = synthesize_ssml("<speak>" + chunk + "</speak>", model=voice_model.name, locale=locale)
                 full_audio = concatenate_audio(full_audio, audio, pause_duration=60)
+
+            if music[0]:
+                full_audio = superpose_music(full_audio, music[0], music[1])
+
             status.update(label="Voice generation complete!", state="complete", expanded=False)
         except Exception as e:
             st.write(e)
@@ -149,11 +190,12 @@ time = st.sidebar.slider("Wanted duration (in minutes):", 1, 15, 5, 1)
 
 with st.form("my_form"):
     text = st.text_input("Optional meditation theme:", max_chars=100, placeholder="What do you want this meditation to be about ?")
+    music = st.selectbox("Select music:", list(musics.keys()), format_func=lambda music: f"{music}")
     clicked = st.form_submit_button("Generate !")
 
     if clicked:
         st.session_state.meditation = generate_response(text, time=time, max_tokens=max_tokens)
-        st.session_state.voice = generate_voice(st.session_state.meditation)
+        st.session_state.voice = generate_voice(st.session_state.meditation, music=musics[music])
 
 if st.session_state.get("voice", False):
     st.audio(st.session_state.voice, format="audio/wav")

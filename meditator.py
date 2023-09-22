@@ -1,16 +1,16 @@
 import wave
 import io
+import re
 
 import numpy as np
 import streamlit as st
 from streamlit.components.v1 import html
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
 
 from voice_synthesis import synthesize_ssml, get_voice_list
+from text_generation import generate_text_v1
 
 
-TESTING = True
+TESTING = st.secrets["TESTING"]
 
 
 st.set_page_config(
@@ -55,15 +55,6 @@ musics = {
     "Water Sound": ["musics/music_2.wav", 0.25],
 }
 
-system_prompt = """You are a meditation generator. You generate a meditation based on the user's input.
-- The meditation should be about {time} minutes long.
-- The meditation will be read by a voice assistant, so make sure to pause for a few seconds between sentences using <break time="Xs"/>. You can only enter a time in seconds and lower than 5.
-- You can also use the tag "emphasis" this way: <emphasis level="strong">This is an important announcement</emphasis> with level being one of: none, reduced, moderate, strong.
-- During the meditation leave a 1 min pause for users to enjoy the state of relaxation using the tag <longpause /> as is without specifying any duration (you can duplicate it if you want a longer pause). DO NOT add the tag after bringing the user back to reality !
-"""
-
-human_prompt = "Generate a meditation using the following prompt:\n\n{user_input}\n\nMake sure to add multiple break and a long pause. Write the meditation in {language}."
-
 safari_warning_html = """
 <div id="safari-warning" style="display: none;">
 <div style="background-color: #ffe3121a; color: #926c05; padding: 10px; border-radius: 5px; font-style: italic; font-family: 'Source Sans Pro'">
@@ -85,27 +76,6 @@ def get_voices(locale, gender):
         gender_index = 1 + (gender == "FEMALE")
         voices = [voice for voice in voices if voice.ssml_gender == gender_index]
     return voices
-
-
-def generate_response(input_text, time, max_tokens):
-    llm = ChatOpenAI(temperature=1, openai_api_key=st.secrets["OPENAI_API_KEY"], model=openai_model, max_tokens=max_tokens)
-    
-    input_messages = [
-        SystemMessage(content=system_prompt.format(time=time)),
-        HumanMessage(content=human_prompt.format(user_input=input_text, language=languages[locale]))
-    ]
-
-    meditation = ""
-    with st.status("Generating text...", expanded=True) as status:
-        placeholder = st.empty()
-        for response in llm.stream(input_messages):
-            meditation += response.content
-            # meditation = meditation.replace(". <",".<").replace(". ",'. <break time=\"1s\" /> ')
-            placeholder.markdown(meditation + "▌")
-        placeholder.markdown(meditation)
-        status.update(label="Text generation complete!", state="complete", expanded=False)
-
-    return meditation
 
 
 def superpose_music(meditation, music_path, mix_ratio=0.5):
@@ -159,16 +129,20 @@ def concatenate_audio(audio1, audio2, pause_duration=0):
     return output_audio_io.getvalue()
 
 
-def generate_voice(meditation, music):
+def generate_audio(meditation, music, sentence_break_time, speaking_rate):
     full_audio = None
     with st.status("Generating voice...", expanded=True) as status:
-        meditation = meditation.replace(". <",".<").replace(". ",'. <break time=\"1s\" /> ')
+        meditation = meditation.replace(". <",".<").replace(". ",f". <break time=\"{sentence_break_time}s\" /> ")
         try:
-            chunks = meditation.split("<longpause />")
-            full_audio = synthesize_ssml("<speak>" + chunks[0] + "</speak>", model=voice_model.name, locale=locale)
-            for chunk in chunks[1:]:
-                audio = synthesize_ssml("<speak>" + chunk + "</speak>", model=voice_model.name, locale=locale)
-                full_audio = concatenate_audio(full_audio, audio, pause_duration=60)
+            pattern = r'\[PAUSE=(\d+)\]'
+            split_text = re.split(pattern, meditation)
+            times = [int(x) for x in split_text[1::2]]
+            chunks = split_text[::2]
+ 
+            full_audio = synthesize_ssml("<speak>" + chunks[0] + "</speak>", model=voice_model.name, locale=locale, speaking_rate=speaking_rate)
+            for chunk, time in zip(chunks[1:], times):
+                audio = synthesize_ssml("<speak>" + chunk + "</speak>", model=voice_model.name, locale=locale, speaking_rate=speaking_rate)
+                full_audio = concatenate_audio(full_audio, audio, pause_duration=time)
 
             if music[0]:
                 full_audio = superpose_music(full_audio, music[0], music[1])
@@ -177,6 +151,8 @@ def generate_voice(meditation, music):
         except Exception as e:
             st.write(e)
             status.update(label="Voice generation failed, retry.", state="error", expanded=True)
+            if TESTING:
+                raise e
     return full_audio
 
 
@@ -184,30 +160,28 @@ def generate_voice(meditation, music):
 
 st.title("Meditator")
 
-openai_model = st.sidebar.radio("Select OpenAI model:", ["gpt-3.5-turbo", "gpt-4"])
 locale = st.sidebar.selectbox("Select language:", languages.keys(), format_func=lambda language: f"{languages[language]}")
 gender = st.sidebar.radio("Select voice gender:", ["MALE", "FEMALE"])
 
-voice_models = get_voices(locale, gender)
-index = next((i for i, model in enumerate(voice_models) if model.name == best_models[gender].get(locale, "")), 0)
+with st.sidebar.expander("Advanced options", expanded=TESTING):
+    openai_model = st.radio("Select OpenAI model:", ["gpt-3.5-turbo", "gpt-4"])
 
-if TESTING:
-    voice_model = st.sidebar.selectbox("Select voice model:", voice_models, format_func=lambda voice: f"{voice.name}", index=index)
-    max_tokens = st.sidebar.slider("Max tokens:", 10, 4000, 1000, 10)
-else:
-    voice_model = voice_models[index]
-    max_tokens = 2000
-
-time = st.sidebar.slider("Wanted duration (in minutes):", 1, 15, 5, 1)
+    voice_models = get_voices(locale, gender)
+    index = next((i for i, model in enumerate(voice_models) if model.name == best_models[gender].get(locale, "")), 0)
+    voice_model = st.selectbox("Select voice model:", voice_models, format_func=lambda voice: f"{voice.name}", index=index)
+    max_tokens = st.slider("Max tokens:", 10, 4000, 100, 10) if TESTING else 2000
+    time = st.slider("Wanted duration (in minutes):", 1, 15, 5, 1)
+    sentence_break_time = st.slider("Sentence break time (in seconds):", 1., 5., 1.5, 0.5)
+    speaking_rate = st.slider("Speaking rate:", 0.5, 1.0, 0.75, 0.01)
 
 with st.form("my_form"):
     text = st.text_input("Optional meditation theme:", max_chars=100, placeholder="What do you want this meditation to be about ?", help="You can write for instance: Relaxation, Sleep, Peace, Joy, Sounds, Inner Child, etc.")
     music = st.selectbox("Select music:", list(musics.keys()), format_func=lambda music: f"{music}")
-    clicked = st.form_submit_button("Generate !")
+    clicked = st.form_submit_button("Generate !", type="primary", use_container_width=True)
 
     if clicked:
-        st.session_state.meditation = generate_response(text, time=time, max_tokens=max_tokens)
-        st.session_state.voice = generate_voice(st.session_state.meditation, music=musics[music])
+        st.session_state.meditation = generate_text_v1(text, time=time, max_tokens=max_tokens, model=openai_model, language=languages[locale])
+        st.session_state.voice = generate_audio(st.session_state.meditation, musics[music], sentence_break_time, speaking_rate)
 
 if st.session_state.get("voice", False):
     st.audio(st.session_state.voice, format="audio/wav")

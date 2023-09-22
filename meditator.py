@@ -1,6 +1,7 @@
 import wave
 import io
 import re
+import base64
 
 import numpy as np
 import streamlit as st
@@ -25,24 +26,30 @@ st.set_page_config(
 )
 
 st.markdown(
-    """
+    f"""
      <style>
-     body .stApp {
-         background: url("https://images.unsplash.com/photo-1542281286-9e0a16bb7366");
+     body .stApp {{
+         // background: url("https://images.unsplash.com/photo-1542281286-9e0a16bb7366");
+         background: url(data:image/png;base64,{base64.b64encode(open("images/background.png", "rb").read()).decode()});
          background-repeat: no-repeat;
          background-position: right 50% bottom 95%;
          background-size: cover;
          background-attachment: scroll;
-     }
-     .main > .block-container {
+     }}
+     .stApp > div > section:first-child {{
+         background-color: rgba(240, 242, 246, 0.7);
+     }}
+     .main > .block-container {{
             background-color: rgba(255, 255, 255, 0.65);
             border-radius: 10px;
             margin-top: 3.5em;
             padding-top: 1em;
-     }
-     header {
-            background-color: rgba(176, 191, 214, 1)!important;
-     }
+            padding-bottom: 1em;
+     }}
+     header {{
+            // background-color: rgba(176, 191, 214, 1)!important;
+            background-color: rgba(255, 255, 255, 0.5)!important;
+     }}
      </style>
      """,
     unsafe_allow_html=True,
@@ -93,6 +100,7 @@ document.getElementById("safari-warning").style.display = "block";
 }
 </script>
 """
+
 
 @st.cache_data
 def get_voices(locale, gender):
@@ -229,4 +237,4 @@ if clicked:
 if st.session_state.get("voice", False):
     st.audio(st.session_state.voice, format="audio/wav")
     st.download_button("Download meditation", data=st.session_state.voice, file_name="meditation.wav", mime="audio/wav", use_container_width=True)
-    html(safari_warning_html)
+    html(safari_warning_html, height=70)

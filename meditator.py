@@ -37,10 +37,11 @@ st.markdown(
          background-attachment: scroll;
      }}
      .stApp > div > section:first-child {{
-         background-color: rgba(240, 242, 246, 0.7);
+        //  background-color: rgba(240, 242, 246, 0.7);
+         background-color: rgba(200, 200, 200, 0.7);
      }}
      .main > .block-container {{
-            background-color: rgba(255, 255, 255, 0.65);
+            background-color: rgba(190, 190, 190, 0.65);
             border-radius: 10px;
             margin-top: 3.5em;
             padding-top: 1em;

@@ -218,7 +218,7 @@ with st.sidebar:
     #st.sidebar.expander("Advanced options", expanded=True):
     st.title("Advanced options")
     st.header("Text generation")
-    openai_model = st.radio("Select OpenAI model:", ["gpt-3.5-turbo", "gpt-4"])
+    openai_model = st.radio("Select OpenAI model:", ["gpt-4o-mini", "gpt-4o"])
     time = st.slider("Wanted duration (in minutes):", 1, 15, 5, 1)
     max_tokens = st.slider("Max tokens:", 10, 4000, 100, 10) if TESTING else 2000
     st.markdown("---")

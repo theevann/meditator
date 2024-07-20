@@ -1,5 +1,6 @@
 google-cloud-texttospeech
 langchain
+langchain_community
 numpy
 openai
 streamlit

@@ -22,7 +22,10 @@ Write the meditation in {language}."""
 
 
 def generate_text_v1(input_text, time, max_tokens, model, language):
-    llm = ChatOpenAI(temperature=1, openai_api_key=secrets["OPENAI_API_KEY"], model=model, max_tokens=max_tokens)
+    if model == "o3-mini":
+        llm = ChatOpenAI(temperature=1, openai_api_key=secrets["OPENAI_API_KEY"], model=model)
+    else:
+        llm = ChatOpenAI(temperature=1, openai_api_key=secrets["OPENAI_API_KEY"], model=model, max_tokens=max_tokens)
     
     input_messages = [
         SystemMessage(content=system_prompt.format(time=time)),
